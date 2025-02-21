@@ -1,18 +1,28 @@
 const Order = require("../models/orderModel");
 
-// Create a new order
+// Create a new order with image upload
 exports.createOrder = async (req, res) => {
   try {
-    const { customerName, deliveryDate, items } = req.body;
+    const { customerName, mobileNumber, deliveryDate, product, items, orderDescription } = req.body;
 
-    if (!customerName || !deliveryDate || !items.length) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!customerName || !mobileNumber || !deliveryDate || !product || !items) {
+      return res.status(400).json({ message: "All required fields must be filled" });
+    }
+
+    // Handle uploaded image
+    let orderImage = "";
+    if (req.file) {
+      orderImage = req.file.path; // Save image path
     }
 
     const newOrder = new Order({
       customerName,
+      mobileNumber,
       deliveryDate,
-      items,
+      product,
+      items: JSON.parse(items), // Parse JSON string from frontend
+      orderDescription,
+      orderImage,
     });
 
     await newOrder.save();
@@ -21,6 +31,7 @@ exports.createOrder = async (req, res) => {
     res.status(500).json({ message: "Server Error", error });
   }
 };
+
 
 // Get all orders
 // Get all orders with pending notifications
