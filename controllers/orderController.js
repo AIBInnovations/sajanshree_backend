@@ -3,24 +3,51 @@ const Order = require("../models/orderModel");
 // Create a new order
 exports.createOrder = async (req, res) => {
   try {
-    const { customerName, deliveryDate, items } = req.body;
+    const {
+      customerName,
+      phone,
+      email,
+      deliveryDate,
+      orderType = "walk-in",
+      items
+    } = req.body;
 
-    if (!customerName || !deliveryDate || !items.length) {
-      return res.status(400).json({ message: "All fields are required" });
+    // Validate required fields
+    if (!customerName || !deliveryDate || !items || !items.length) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate item structure
+    for (const item of items) {
+      if (!item.product || !item.sizes || typeof item.sizes !== 'object') {
+        return res.status(400).json({ message: "Invalid item format" });
+      }
     }
 
     const newOrder = new Order({
       customerName,
+      phone,
+      email,
       deliveryDate,
-      items,
+      orderType,
+      items: items.map(item => ({
+        category: item.product,
+        sizes: item.sizes
+      }))
     });
 
     await newOrder.save();
-    res.status(201).json({ message: "Order created successfully", order: newOrder });
+
+    res.status(201).json({
+      message: "Order created successfully",
+      order: newOrder
+    });
   } catch (error) {
+    console.error("❌ Error creating order:", error);
     res.status(500).json({ message: "Server Error", error });
   }
 };
+
 
 // Get all orders
 // Get all orders with pending notifications

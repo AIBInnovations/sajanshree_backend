@@ -16,7 +16,10 @@ const orderSchema = new mongoose.Schema(
         category: { type: String, required: true },
         sizes: {
           type: Map,
-          of: Number,
+          of: new mongoose.Schema({
+            quantity: { type: Number, default: 0 },
+            price: { type: Number, default: 0 }
+          }),
           default: {},
         },
       },
