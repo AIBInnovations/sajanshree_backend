@@ -7,7 +7,29 @@ const app = express();
 
 // Middleware
 app.use(express.json()); // Parses incoming JSON requests
-app.use(cors()); // Enables CORS for frontend communication
+// CORS configuration
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://sajan-shree-frontend-bu8g.vercel.app",
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Allow all localhost ports
+    if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions)); // Enables CORS for frontend communication
 app.use(morgan("dev")); // Logs requests for debugging
 
 // Sample route
@@ -68,6 +90,5 @@ app.use("/api/users", userRoutes);
 
 // Error Handling Middleware (should be after routes)
 app.use(errorHandler);
-
 
 require("./utils/cronJobs"); // Import and start cron jobs
