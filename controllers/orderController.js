@@ -1,5 +1,4 @@
 const Order = require("../models/orderModel");
-const OrderOption = require("../models/orderOptionModel");
 
 // Create a new order with image upload
 exports.createOrder = async (req, res) => {
@@ -143,87 +142,5 @@ exports.updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error });
-  }
-};
-
-// order options
-// @route POST /apiorder-options
-// @desc Create a new orderOption configuration
-// @access Private
-exports.createOrderOption = async (req, res) => {
-  try {
-    const { name, sizes, details } = req.body;
-    const orderOption = new OrderOption({ name, sizes, details });
-    await orderOption.save();
-    res.status(201).json(orderOption);
-  } catch (error) {
-    console.error("Create orderOption error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// @route GET /apiorder-options
-// @desc Fetch all orderOption configurations
-// @access Private
-exports.getOrderOptions = async (req, res) => {
-  try {
-    const orderOptions = await OrderOption.find();
-    res.json(orderOptions);
-  } catch (error) {
-    console.error("Fetch orderOptions error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// @route GET /apiorder-options/:id
-// @desc Fetch a single orderOption by ID
-// @access Private
-exports.getOrderOptionById = async (req, res) => {
-  try {
-    const orderOption = await OrderOption.findById(req.params.id);
-    if (!orderOption) {
-      return res.status(404).json({ message: "OrderOption not found" });
-    }
-    res.json(orderOption);
-  } catch (error) {
-    console.error("Fetch orderOption error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// @route PUT /apiorder-options/:id
-// @desc Update a orderOption configuration
-// @access Private
-exports.updateOrderOption = async (req, res) => {
-  try {
-    const { name, sizes, details } = req.body;
-    const orderOption = await OrderOption.findByIdAndUpdate(
-      req.params.id,
-      { name, sizes, details, updatedAt: Date.now() },
-      { new: true, runValidators: true }
-    );
-    if (!orderOption) {
-      return res.status(404).json({ message: "OrderOption not found" });
-    }
-    res.json(orderOption);
-  } catch (error) {
-    console.error("Update orderOption error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// @route DELETE /apiorder-options/:id
-// @desc Delete a orderOption configuration
-// @access Private
-exports.deleteOrderOption = async (req, res) => {
-  try {
-    const orderOption = await OrderOption.findByIdAndDelete(req.params.id);
-    if (!orderOption) {
-      return res.status(404).json({ message: "OrderOption not found" });
-    }
-    res.json({ message: "OrderOption deleted" });
-  } catch (error) {
-    console.error("Delete orderOption error:", error);
-    res.status(500).json({ message: "Server error" });
   }
 };

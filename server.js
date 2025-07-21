@@ -62,10 +62,12 @@ testDB();
 
 const orderRoutes = require("./routes/orderRoutes");
 const userRoutes = require("./routes/userRoutes");
+const productRoutes = require("./routes/productRoutes");
 
 // Use Routes
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/products", productRoutes);
 
 const mongoose = require("mongoose");
 
