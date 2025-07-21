@@ -1,23 +1,15 @@
 const express = require("express");
-const {
-  createOrder,
-  getAllOrders,
-  getOrderById,
-  updateOrder,
-  deleteOrder,
-  updateOrderStatus
-} = require("../controllers/orderController");
-
-const protect = require("../middleware/authMiddleware"); // ✅ Correct import
+const { createOrder, getAllOrders, getOrderById, updateOrder, deleteOrder } = require("../controllers/orderController");
+const protect = require("../middleware/authMiddleware");
+const upload = require("../middleware/uploadMiddleware"); // Import multer middleware
 
 const router = express.Router();
 
 // Order Routes
-router.post("/", protect, createOrder); // Protected: Create an order
-router.get("/", protect, getAllOrders); // Protected: Get all orders
-router.get("/:id", protect, getOrderById); // Protected: Get order by ID
-router.put("/:id", protect, updateOrder); // Protected: Update order
-router.delete("/:id", protect, deleteOrder); // Protected: Delete order
-router.put("/:id/status", protect, updateOrderStatus); // ✅ Protect this route
+router.post("/", protect, upload.single("orderImage"), createOrder); // Now supports image upload
+router.get("/", protect, getAllOrders);
+router.get("/:id", protect, getOrderById);
+router.put("/:id", protect, updateOrder);
+router.delete("/:id", protect, deleteOrder);
 
 module.exports = router;

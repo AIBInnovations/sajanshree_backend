@@ -1,6 +1,6 @@
 const Order = require("../models/orderModel");
 
-// Create a new order
+// Create a new order with image upload
 exports.createOrder = async (req, res) => {
   try {
     const {

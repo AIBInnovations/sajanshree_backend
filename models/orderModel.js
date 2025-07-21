@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const orderSchema = new mongoose.Schema(
   {
     customerName: { type: String, required: true },
+    mobileNumber: { type: String, required: true }, // Added mobile number field
     orderDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date, required: true },
     status: {
@@ -11,9 +12,9 @@ const orderSchema = new mongoose.Schema(
       enum: ["Pending", "Processing", "Completed", "Shipped"],
       default: "Pending",
     },
+    product: { type: String, required: true }, // Product selection
     items: [
       {
-        category: { type: String, required: true },
         sizes: {
           type: Map,
           of: new mongoose.Schema({
@@ -24,6 +25,8 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+    orderDescription: { type: String }, // Optional order details
+    orderImage: { type: String }, // Stores the image file path or URL
   },
   { timestamps: true }
 );
