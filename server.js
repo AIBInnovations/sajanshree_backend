@@ -30,6 +30,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions)); // Enables CORS for frontend communication
+// Explicitly handle preflight OPTIONS requests for all routes
+app.options("*", cors(corsOptions));
 app.use(morgan("dev")); // Logs requests for debugging
 
 // Sample route
