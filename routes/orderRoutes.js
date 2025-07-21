@@ -17,3 +17,5 @@ router.get("/", protect, getAllOrders);
 router.get("/:id", protect, getOrderById);
 router.put("/:id", protect, updateOrder);
 router.delete("/:id", protect, deleteOrder);
+
+module.exports = router;
