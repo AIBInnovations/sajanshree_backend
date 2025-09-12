@@ -2,6 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
+const swaggerUi = require("swagger-ui-express");
+const YAML = require("yamljs");
+const path = require("path");
 
 const app = express();
 
@@ -33,6 +36,10 @@ app.use(cors(corsOptions)); // Enables CORS for frontend communication
 // Explicitly handle preflight OPTIONS requests for all routes
 app.options("*", cors(corsOptions));
 app.use(morgan("dev")); // Logs requests for debugging
+
+// Swagger UI
+const swaggerDocument = YAML.load(path.join(__dirname, "swagger.yaml"));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Sample route
 app.get("/", (req, res) => {
