@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 // Define the schema for an Order
 const orderSchema = new mongoose.Schema(
   {
+    orderId: { type: String, unique: true },
     customerName: { type: String, required: true },
     mobileNumber: { type: String, required: true }, // Added mobile number field
     orderDate: { type: Date, default: Date.now },
