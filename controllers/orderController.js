@@ -1,6 +1,8 @@
 const Order = require("../models/orderModel");
 
 // Create a new order with image upload
+// In orderController.js - update the createOrder function:
+
 exports.createOrder = async (req, res) => {
   try {
     const {
@@ -9,11 +11,12 @@ exports.createOrder = async (req, res) => {
       email,
       deliveryDate,
       orderType = "walk-in",
+      product, // Add this line
       items,
     } = req.body;
 
     // Validate required fields
-    if (!customerName || !deliveryDate || !items || !items.length) {
+    if (!customerName || !deliveryDate || !product || !phone || !items || !items.length) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -26,7 +29,8 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order({
       customerName,
-      phone,
+      mobileNumber: phone, // Map phone to mobileNumber
+      product, // Add product field
       email,
       deliveryDate,
       orderType,
