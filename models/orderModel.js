@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 // Define the schema for an Order
 const orderSchema = new mongoose.Schema(
   {
-    orderId: { type: String, unique: true },
+    orderId: { type: String, unique: true, sparse: true },
     customerName: { type: String, required: true },
     mobileNumber: { type: String, required: true }, // Added mobile number field
     orderDate: { type: Date, default: Date.now },
@@ -31,6 +31,14 @@ const orderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Pre-save hook to generate orderId if not provided
+orderSchema.pre('save', function(next) {
+  if (!this.orderId) {
+    this.orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+  next();
+});
 
 const Order = mongoose.model("Order", orderSchema);
 module.exports = Order;

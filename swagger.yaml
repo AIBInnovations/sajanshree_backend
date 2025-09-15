@@ -473,16 +473,32 @@ components:
     # Orders
     CreateOrderRequest:
       type: object
-      required: [customerName, deliveryDate, items]
+      required: [customerName, deliveryDate, product, phone, items]
       properties:
+        orderId:
+          type: string
+          description: Optional custom order ID. If not provided, will be auto-generated
+          example: ORD-5273
         customerName:
           type: string
+          example: Bhavya Kothari
         deliveryDate:
           type: string
           format: date
+          example: "2025-09-30T00:00:00.000Z"
         orderType:
           type: string
           example: walk-in
+        product:
+          type: string
+          example: Pant Elastic
+        phone:
+          type: string
+          example: "9644400090"
+        email:
+          type: string
+          format: email
+          example: bhavyakothari593@gmail.com
         items:
           type: array
           items:
@@ -491,6 +507,7 @@ components:
             properties:
               product:
                 type: string
+                example: Pant Elastic
               sizes:
                 type: object
                 additionalProperties:
@@ -498,13 +515,10 @@ components:
                   properties:
                     quantity:
                       type: number
+                      example: 5
                     price:
                       type: number
-        phone:
-          type: string
-        email:
-          type: string
-          format: email
+                      example: 100
 
     UpdateOrderRequest:
       type: object

@@ -21,14 +21,16 @@ Route prefix: `/api/orders`
     - `application/json` (no image)
     - `multipart/form-data` (use field `orderImage` for file)
   - Body fields:
+    - `orderId` string (optional, auto-generated if not provided)
     - `customerName` string (required)
     - `deliveryDate` string (ISO date, required)
-    - `items` array (required, non-empty). Each item:
-      - `product` string (required; controller maps to `category`)
-      - `sizes` object size -> `{ quantity:number, price:number }` (required)
-    - `orderType` string (optional, default `walk-in`)
-    - `phone` string (optional)
+    - `product` string (required)
+    - `phone` string (required)
     - `email` string (optional)
+    - `orderType` string (optional, default `walk-in`)
+    - `items` array (required, non-empty). Each item:
+      - `product` string (required)
+      - `sizes` object size -> `{ quantity:number, price:number }` (required)
     - `orderImage` file (optional, multipart only)
   - Responses:
     - 201 `{ message: "Order created successfully", order }`

@@ -6,12 +6,13 @@ const Order = require("../models/orderModel");
 exports.createOrder = async (req, res) => {
   try {
     const {
+      orderId,
       customerName,
       phone,
       email,
       deliveryDate,
       orderType = "walk-in",
-      product, // Add this line
+      product,
       items,
     } = req.body;
 
@@ -27,16 +28,19 @@ exports.createOrder = async (req, res) => {
       }
     }
 
+    // Generate orderId if not provided
+    const finalOrderId = orderId || `ORD-${Date.now()}`;
+
     const newOrder = new Order({
+      orderId: finalOrderId,
       customerName,
       mobileNumber: phone, // Map phone to mobileNumber
-      product, // Add product field
+      product,
       email,
       deliveryDate,
       orderType,
       items: items.map((item) => ({
-        category: item.product,
-        sizes: item.sizes,
+        sizes: item.sizes, // Direct mapping since model expects sizes directly
       })),
     });
 
