@@ -73,20 +73,22 @@ curl -X POST http://localhost:5000/api/orders \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "customerName": "John Doe",
-    "deliveryDate": "2025-09-30",
+    "orderId": "ORD-5273",
+    "customerName": "Bhavya Kothari",
+    "deliveryDate": "2025-09-30T00:00:00.000Z",
+    "product": "Pant Elastic",
+    "phone": "9644400090",
+    "email": "bhavyakothari593@gmail.com",
     "orderType": "walk-in",
     "items": [
       {
-        "product": "T-Shirt",
+        "product": "Pant Elastic",
         "sizes": {
           "M": { "quantity": 10, "price": 200 },
           "L": { "quantity": 5, "price": 220 }
         }
       }
-    ],
-    "phone": "9998887777",
-    "email": "john@example.com"
+    ]
   }'
 ```
 
