@@ -5,17 +5,21 @@ const orderSchema = new mongoose.Schema(
   {
     orderId: { type: String, unique: true, sparse: true },
     customerName: { type: String, required: true },
-    mobileNumber: { type: String, required: true }, // Added mobile number field
+    mobileNumber: { type: String, required: true },
+    email: { type: String },
+    address: { type: String },
     orderDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date, required: true },
+    orderType: { type: String, default: "walk-in" },
     status: {
       type: String,
       enum: ["Pending", "Processing", "Completed", "Shipped"],
       default: "Pending",
     },
-    product: { type: String, required: true }, // Product selection
+    product: { type: String, required: true },
     items: [
       {
+        product: { type: String, required: true },
         sizes: {
           type: Map,
           of: new mongoose.Schema({
@@ -24,10 +28,21 @@ const orderSchema = new mongoose.Schema(
           }),
           default: {},
         },
+        details: {
+          type: Map,
+          of: String,
+          default: {}
+        }
       },
     ],
-    orderDescription: { type: String }, // Optional order details
-    orderImage: { type: String }, // Stores the image file path or URL
+    advancePayments: [
+      {
+        amount: { type: Number, default: 0 },
+        date: { type: Date, default: Date.now }
+      }
+    ],
+    orderDescription: { type: String },
+    orderImage: { type: String },
   },
   { timestamps: true }
 );

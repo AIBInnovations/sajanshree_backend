@@ -27,10 +27,15 @@ Route prefix: `/api/orders`
     - `product` string (required)
     - `phone` string (required)
     - `email` string (optional)
+    - `address` string (optional)
     - `orderType` string (optional, default `walk-in`)
+    - `advancePayments` array (optional). Each payment:
+      - `amount` number (required)
+      - `date` string (ISO date, optional, defaults to current date)
     - `items` array (required, non-empty). Each item:
       - `product` string (required)
       - `sizes` object size -> `{ quantity:number, price:number }` (required)
+      - `details` object (optional) - product-specific details like color, material, etc.
     - `orderImage` file (optional, multipart only)
   - Responses:
     - 201 `{ message: "Order created successfully", order }`
@@ -79,13 +84,24 @@ curl -X POST http://localhost:5000/api/orders \
     "product": "Pant Elastic",
     "phone": "9644400090",
     "email": "bhavyakothari593@gmail.com",
+    "address": "123 Main Street, City, State",
     "orderType": "walk-in",
+    "advancePayments": [
+      {
+        "amount": 1000,
+        "date": "2025-01-12T10:00:00.000Z"
+      }
+    ],
     "items": [
       {
         "product": "Pant Elastic",
         "sizes": {
           "M": { "quantity": 10, "price": 200 },
           "L": { "quantity": 5, "price": 220 }
+        },
+        "details": {
+          "color": "Black",
+          "material": "Cotton"
         }
       }
     ]

@@ -10,10 +10,12 @@ exports.createOrder = async (req, res) => {
       customerName,
       phone,
       email,
+      address,
       deliveryDate,
       orderType = "walk-in",
       product,
       items,
+      advancePayments = []
     } = req.body;
 
     // Validate required fields
@@ -31,17 +33,31 @@ exports.createOrder = async (req, res) => {
     // Generate orderId if not provided
     const finalOrderId = orderId || `ORD-${Date.now()}`;
 
+    // Process advance payments
+    const processedAdvancePayments = advancePayments.map(payment => ({
+      amount: parseFloat(payment.amount) || 0,
+      date: payment.date ? new Date(payment.date) : new Date()
+    }));
+
+    // Process items with details
+    const processedItems = items.map((item) => ({
+      product: item.product,
+      sizes: item.sizes,
+      details: item.details || {}
+    }));
+
     const newOrder = new Order({
       orderId: finalOrderId,
       customerName,
-      mobileNumber: phone, // Map phone to mobileNumber
-      product,
+      mobileNumber: phone,
       email,
+      address,
+      product,
       deliveryDate,
       orderType,
-      items: items.map((item) => ({
-        sizes: item.sizes, // Direct mapping since model expects sizes directly
-      })),
+      items: processedItems,
+      advancePayments: processedAdvancePayments,
+      orderImage: req.file ? req.file.path : undefined
     });
 
     await newOrder.save();

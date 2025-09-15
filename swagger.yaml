@@ -499,6 +499,21 @@ components:
           type: string
           format: email
           example: bhavyakothari593@gmail.com
+        address:
+          type: string
+          example: "123 Main Street, City, State"
+        advancePayments:
+          type: array
+          items:
+            type: object
+            properties:
+              amount:
+                type: number
+                example: 1000
+              date:
+                type: string
+                format: date-time
+                example: "2025-01-12T10:00:00.000Z"
         items:
           type: array
           items:
@@ -519,6 +534,14 @@ components:
                     price:
                       type: number
                       example: 100
+              details:
+                type: object
+                additionalProperties:
+                  type: string
+                description: Product-specific details like color, material, etc.
+                example:
+                  color: "Black"
+                  material: "Cotton"
 
     UpdateOrderRequest:
       type: object
