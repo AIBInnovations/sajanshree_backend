@@ -5,6 +5,27 @@ const Order = require("../models/orderModel");
 
 exports.createOrder = async (req, res) => {
   try {
+    // Handle both JSON and FormData requests
+    let requestData;
+    if (req.body && typeof req.body === 'object' && req.body.items) {
+      // JSON request
+      requestData = req.body;
+    } else {
+      // FormData request - parse JSON fields
+      requestData = {
+        orderId: req.body.orderId,
+        customerName: req.body.customerName,
+        phone: req.body.phone,
+        email: req.body.email,
+        address: req.body.address,
+        deliveryDate: req.body.deliveryDate,
+        orderType: req.body.orderType || "walk-in",
+        product: req.body.product,
+        items: req.body.items ? JSON.parse(req.body.items) : [],
+        advancePayments: req.body.advancePayments ? JSON.parse(req.body.advancePayments) : []
+      };
+    }
+
     const {
       orderId,
       customerName,
@@ -16,7 +37,7 @@ exports.createOrder = async (req, res) => {
       product,
       items,
       advancePayments = []
-    } = req.body;
+    } = requestData;
 
     // Validate required fields
     if (!customerName || !deliveryDate || !product || !phone || !items || !items.length) {
@@ -57,7 +78,7 @@ exports.createOrder = async (req, res) => {
       orderType,
       items: processedItems,
       advancePayments: processedAdvancePayments,
-      orderImage: req.file ? req.file.path : undefined
+      orderImage: req.file ? req.file.path : null
     });
 
     await newOrder.save();
