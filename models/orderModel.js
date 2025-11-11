@@ -5,7 +5,6 @@ const orderSchema = new mongoose.Schema(
   {
     orderId: { type: String, unique: true, sparse: true },
     customerName: { type: String, required: true },
-    mobileNumber: { type: String, required: true },
     orderDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date, required: true },
     status: {

@@ -15,7 +15,6 @@ exports.createOrder = async (req, res) => {
       requestData = {
         orderId: req.body.orderId,
         customerName: req.body.customerName,
-        phone: req.body.phone,
         deliveryDate: req.body.deliveryDate,
         product: req.body.product,
         items: req.body.items ? JSON.parse(req.body.items) : []
@@ -25,14 +24,13 @@ exports.createOrder = async (req, res) => {
     const {
       orderId,
       customerName,
-      phone,
       deliveryDate,
       product,
       items
     } = requestData;
 
     // Validate required fields
-    if (!customerName || !deliveryDate || !product || !phone || !items || !items.length) {
+    if (!customerName || !deliveryDate || !product || !items || !items.length) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -56,7 +54,6 @@ exports.createOrder = async (req, res) => {
     const newOrder = new Order({
       orderId: finalOrderId,
       customerName,
-      mobileNumber: phone,
       product,
       deliveryDate,
       items: processedItems,
