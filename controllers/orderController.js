@@ -16,13 +16,9 @@ exports.createOrder = async (req, res) => {
         orderId: req.body.orderId,
         customerName: req.body.customerName,
         phone: req.body.phone,
-        email: req.body.email,
-        address: req.body.address,
         deliveryDate: req.body.deliveryDate,
-        orderType: req.body.orderType || "walk-in",
         product: req.body.product,
-        items: req.body.items ? JSON.parse(req.body.items) : [],
-        advancePayments: req.body.advancePayments ? JSON.parse(req.body.advancePayments) : []
+        items: req.body.items ? JSON.parse(req.body.items) : []
       };
     }
 
@@ -30,13 +26,9 @@ exports.createOrder = async (req, res) => {
       orderId,
       customerName,
       phone,
-      email,
-      address,
       deliveryDate,
-      orderType = "walk-in",
       product,
-      items,
-      advancePayments = []
+      items
     } = requestData;
 
     // Validate required fields
@@ -54,12 +46,6 @@ exports.createOrder = async (req, res) => {
     // Generate orderId if not provided
     const finalOrderId = orderId || `ORD-${Date.now()}`;
 
-    // Process advance payments
-    const processedAdvancePayments = advancePayments.map(payment => ({
-      amount: parseFloat(payment.amount) || 0,
-      date: payment.date ? new Date(payment.date) : new Date()
-    }));
-
     // Process items with details
     const processedItems = items.map((item) => ({
       product: item.product,
@@ -71,13 +57,9 @@ exports.createOrder = async (req, res) => {
       orderId: finalOrderId,
       customerName,
       mobileNumber: phone,
-      email,
-      address,
       product,
       deliveryDate,
-      orderType,
       items: processedItems,
-      advancePayments: processedAdvancePayments,
       orderImage: req.file ? req.file.path : null
     });
 

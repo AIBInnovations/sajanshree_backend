@@ -6,11 +6,8 @@ const orderSchema = new mongoose.Schema(
     orderId: { type: String, unique: true, sparse: true },
     customerName: { type: String, required: true },
     mobileNumber: { type: String, required: true },
-    email: { type: String },
-    address: { type: String },
     orderDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date, required: true },
-    orderType: { type: String, default: "walk-in" },
     status: {
       type: String,
       enum: ["Pending", "Processing", "Completed", "Shipped"],
@@ -34,12 +31,6 @@ const orderSchema = new mongoose.Schema(
           default: {}
         }
       },
-    ],
-    advancePayments: [
-      {
-        amount: { type: Number, default: 0 },
-        date: { type: Date, default: Date.now }
-      }
     ],
     orderDescription: { type: String },
     orderImage: { type: String },
