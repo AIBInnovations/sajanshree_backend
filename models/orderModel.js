@@ -32,7 +32,10 @@ const orderSchema = new mongoose.Schema(
       },
     ],
     orderDescription: { type: String },
-    orderImage: { type: String },
+    orderImage: {
+      url: { type: String },
+      publicId: { type: String }
+    },
   },
   { timestamps: true }
 );
