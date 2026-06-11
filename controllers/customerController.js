@@ -73,7 +73,8 @@ exports.getCustomerOrders = async (req, res) => {
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
     }
-    const orders = await Order.find({ customer: req.params.id }).sort({
+    // Orders reference the customer by name (customerName), not by id.
+    const orders = await Order.find({ customerName: customer.name }).sort({
       createdAt: -1,
     });
     res.json(orders);

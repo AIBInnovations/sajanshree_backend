@@ -87,6 +87,20 @@ exports.createOrder = async (req, res) => {
         // Continue without linking — the order can still be created.
       }
     }
+    // No phone provided: still ensure a customer exists, matched by name, so the
+    // customer directory is populated from every order (not just phone-bearing ones).
+    if (!customerRef && customerName) {
+      try {
+        const linkedByName = await Customer.findOneAndUpdate(
+          { name: customerName },
+          { $setOnInsert: { name: customerName } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        customerRef = linkedByName._id;
+      } catch (upsertError) {
+        console.error("⚠️ Customer upsert by name failed:", upsertError.message);
+      }
+    }
 
     // Validate item structure (fall back to the order-level product when an item omits it)
     for (let i = 0; i < items.length; i++) {
