@@ -7,6 +7,7 @@ const {
   updateProduct,
   deleteProduct,
   addProductOption,
+  addProductSize,
 } = require("../controllers/productController");
 
 // @route POST /api/products
@@ -44,6 +45,12 @@ router.delete("/:id", deleteProduct);
 // @req Params: { productName: String }, Body: { detailKey: String, option: String }
 // @res Status 200: Returns updated product object, Status 404: Product or detail not found, Status 400: Invalid request
 router.patch("/:productName/options", addProductOption);
+
+// @route PATCH /api/products/:productName/sizes
+// @desc Adds a new size to a product
+// @req Params: { productName: String }, Body: { size: String }
+// @res Status 200: Returns updated product object, Status 404: Product not found, Status 400: Invalid/duplicate size
+router.patch("/:productName/sizes", addProductSize);
 
 module.exports = router;
 

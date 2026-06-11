@@ -202,24 +202,26 @@ exports.updateOrder = async (req, res) => {
       existingImagePublicId: order.orderImage?.publicId
     });
 
-    // Handle both JSON and FormData requests
-    let requestData;
-    if (req.body && typeof req.body === 'object' && req.body.items && !req.file) {
-      // JSON request
-      requestData = req.body;
-    } else if (req.file || req.body.items) {
-      // FormData request
-      requestData = {
-        customerName: req.body.customerName,
-        deliveryDate: req.body.deliveryDate,
-        product: req.body.product,
-        items: req.body.items ? JSON.parse(req.body.items) : undefined,
-        orderDescription: req.body.orderDescription,
-        status: req.body.status
-      };
-    } else {
-      requestData = req.body;
+    // Handle both JSON and FormData requests.
+    // With FormData (image upload), `items` arrives as a JSON string and must be parsed.
+    // With a JSON request, `items` is already an array. Detect by type, not truthiness.
+    let parsedItems = req.body.items;
+    if (typeof parsedItems === 'string') {
+      try {
+        parsedItems = JSON.parse(parsedItems);
+      } catch (parseError) {
+        return res.status(400).json({ message: 'Invalid items: could not parse JSON', error: parseError.message });
+      }
     }
+
+    const requestData = {
+      customerName: req.body.customerName,
+      deliveryDate: req.body.deliveryDate,
+      product: req.body.product,
+      items: Array.isArray(parsedItems) ? parsedItems : undefined,
+      orderDescription: req.body.orderDescription,
+      status: req.body.status
+    };
 
     // Update fields if provided
     if (requestData.customerName) order.customerName = requestData.customerName;

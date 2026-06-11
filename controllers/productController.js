@@ -119,6 +119,39 @@ exports.addProductOption = async (req, res) => {
   }
 };
 
+// @route PATCH /api/products/:productName/sizes
+// @desc Add a new size to a product
+// @access Private
+exports.addProductSize = async (req, res) => {
+  try {
+    const { productName } = req.params;
+    const { size } = req.body;
+
+    if (!size || !String(size).trim()) {
+      return res.status(400).json({ message: "Size is required" });
+    }
+
+    const trimmedSize = String(size).trim();
+
+    const product = await Product.findOne({ name: productName });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (product.sizes.includes(trimmedSize)) {
+      return res.status(400).json({ message: "Size already exists" });
+    }
+
+    product.sizes.push(trimmedSize);
+    await product.save();
+
+    res.json(product);
+  } catch (error) {
+    console.error("Add size error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // const Product = require("../models/Product");
 
 // // @route POST /api/products
