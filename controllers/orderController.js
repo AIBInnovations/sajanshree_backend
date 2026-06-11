@@ -1,4 +1,5 @@
 const Order = require("../models/orderModel");
+const Customer = require("../models/customerModel");
 const { cloudinary } = require("../config/cloudinary");
 
 // Create a new order with image upload
@@ -37,6 +38,8 @@ exports.createOrder = async (req, res) => {
 
     const requestData = {
       orderId: req.body.orderId,
+      customer: req.body.customer,
+      phone: req.body.phone,
       customerName: req.body.customerName,
       deliveryDate: req.body.deliveryDate,
       product: req.body.product,
@@ -53,6 +56,8 @@ exports.createOrder = async (req, res) => {
 
     const {
       orderId,
+      customer,
+      phone,
       customerName,
       deliveryDate,
       product,
@@ -62,6 +67,25 @@ exports.createOrder = async (req, res) => {
     // Validate required fields
     if (!customerName || !deliveryDate || !product || !items || !items.length) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Resolve the linked customer reference.
+    // Prefer an explicit customer id; otherwise upsert by phone so the
+    // customer directory is built up automatically as orders come in.
+    // A missing phone simply skips linking (customerName-only orders still work).
+    let customerRef = customer || null;
+    if (!customerRef && phone) {
+      try {
+        const linkedCustomer = await Customer.findOneAndUpdate(
+          { phone },
+          { $setOnInsert: { name: customerName, phone } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        customerRef = linkedCustomer._id;
+      } catch (upsertError) {
+        console.error("⚠️ Customer upsert failed:", upsertError.message);
+        // Continue without linking — the order can still be created.
+      }
     }
 
     // Validate item structure (fall back to the order-level product when an item omits it)
@@ -101,6 +125,7 @@ exports.createOrder = async (req, res) => {
 
     const newOrder = new Order({
       orderId: finalOrderId,
+      customer: customerRef,
       customerName,
       product,
       deliveryDate,
@@ -215,6 +240,7 @@ exports.updateOrder = async (req, res) => {
     }
 
     const requestData = {
+      customer: req.body.customer,
       customerName: req.body.customerName,
       deliveryDate: req.body.deliveryDate,
       product: req.body.product,
@@ -224,6 +250,7 @@ exports.updateOrder = async (req, res) => {
     };
 
     // Update fields if provided
+    if (requestData.customer) order.customer = requestData.customer;
     if (requestData.customerName) order.customerName = requestData.customerName;
     if (requestData.deliveryDate) order.deliveryDate = requestData.deliveryDate;
     if (requestData.product) order.product = requestData.product;

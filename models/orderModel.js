@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const orderSchema = new mongoose.Schema(
   {
     orderId: { type: String, unique: true, sparse: true },
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
     customerName: { type: String, required: true },
     orderDate: { type: Date, default: Date.now },
     deliveryDate: { type: Date, required: true },
