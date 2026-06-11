@@ -5,13 +5,30 @@ const { cloudinary } = require("../config/cloudinary");
 
 exports.createOrder = async (req, res) => {
   try {
+    console.log('\n🆕 ===== CREATE ORDER REQUEST =====');
+    console.log('📥 Request body keys:', Object.keys(req.body));
+    console.log('📸 File uploaded:', req.file ? 'YES' : 'NO');
+
+    if (req.file) {
+      console.log('📁 Uploaded file info:', {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: `${(req.file.size / 1024).toFixed(2)} KB`,
+        cloudinaryPath: req.file.path,
+        cloudinaryFilename: req.file.filename
+      });
+    }
+
     // Handle both JSON and FormData requests
     let requestData;
     if (req.body && typeof req.body === 'object' && req.body.items) {
       // JSON request
+      console.log('📋 Request type: JSON');
       requestData = req.body;
     } else {
       // FormData request - parse JSON fields
+      console.log('📋 Request type: FormData');
       requestData = {
         orderId: req.body.orderId,
         customerName: req.body.customerName,
@@ -20,6 +37,14 @@ exports.createOrder = async (req, res) => {
         items: req.body.items ? JSON.parse(req.body.items) : []
       };
     }
+
+    console.log('📦 Parsed request data:', {
+      orderId: requestData.orderId,
+      customerName: requestData.customerName,
+      deliveryDate: requestData.deliveryDate,
+      product: requestData.product,
+      itemsCount: requestData.items?.length
+    });
 
     const {
       orderId,
@@ -35,9 +60,19 @@ exports.createOrder = async (req, res) => {
     }
 
     // Validate item structure
-    for (const item of items) {
-      if (!item.product || !item.sizes || typeof item.sizes !== "object") {
-        return res.status(400).json({ message: "Invalid item format" });
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.product) {
+        return res.status(400).json({
+          message: `Invalid item format: item[${i}] is missing "product"`,
+          item
+        });
+      }
+      if (!item.sizes || typeof item.sizes !== "object") {
+        return res.status(400).json({
+          message: `Invalid item format: item[${i}] "sizes" must be an object, got ${typeof item.sizes}`,
+          item
+        });
       }
     }
 
@@ -51,27 +86,47 @@ exports.createOrder = async (req, res) => {
       details: item.details || {}
     }));
 
+    const orderImageData = req.file ? {
+      url: req.file.path,
+      publicId: req.file.filename
+    } : null;
+
+    console.log('🖼️ Order image data:', orderImageData ? 'Image attached' : 'No image');
+
     const newOrder = new Order({
       orderId: finalOrderId,
       customerName,
       product,
       deliveryDate,
       items: processedItems,
-      orderImage: req.file ? {
-        url: req.file.path,
-        publicId: req.file.filename
-      } : null
+      orderImage: orderImageData
     });
 
+    console.log('💾 Saving order to database...');
     await newOrder.save();
+    console.log('✅ Order saved successfully with ID:', newOrder._id);
 
     res.status(201).json({
       message: "Order created successfully",
       order: newOrder,
     });
   } catch (error) {
-    console.error("❌ Error creating order:", error);
-    res.status(500).json({ message: "Server Error", error });
+    console.error("\n❌ ===== CREATE ORDER ERROR =====");
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+
+    // Check if it's a Cloudinary error
+    if (error.http_code) {
+      console.error('☁️ Cloudinary Error Code:', error.http_code);
+      console.error('☁️ Cloudinary Error:', error.message);
+    }
+
+    res.status(500).json({
+      message: "Server Error",
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -111,11 +166,35 @@ exports.getOrderById = async (req, res) => {
 // Update an order
 exports.updateOrder = async (req, res) => {
   try {
+    console.log('\n🔄 ===== UPDATE ORDER REQUEST =====');
+    console.log('🆔 Order ID:', req.params.id);
+    console.log('📥 Request body keys:', Object.keys(req.body));
+    console.log('📸 New file uploaded:', req.file ? 'YES' : 'NO');
+
+    if (req.file) {
+      console.log('📁 New uploaded file info:', {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: `${(req.file.size / 1024).toFixed(2)} KB`,
+        cloudinaryPath: req.file.path,
+        cloudinaryFilename: req.file.filename
+      });
+    }
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
+      console.log('❌ Order not found with ID:', req.params.id);
       return res.status(404).json({ message: "Order not found" });
     }
+
+    console.log('📦 Existing order found:', {
+      orderId: order.orderId,
+      customerName: order.customerName,
+      hasImage: order.orderImage ? 'YES' : 'NO',
+      existingImagePublicId: order.orderImage?.publicId
+    });
 
     // Handle both JSON and FormData requests
     let requestData;
@@ -146,49 +225,109 @@ exports.updateOrder = async (req, res) => {
 
     // Handle new image upload
     if (req.file) {
+      console.log('🔄 Processing new image upload...');
+
       // Delete old image from Cloudinary if exists
       if (order.orderImage && order.orderImage.publicId) {
-        await cloudinary.uploader.destroy(order.orderImage.publicId);
+        console.log('🗑️ Deleting old image from Cloudinary:', order.orderImage.publicId);
+        try {
+          const deleteResult = await cloudinary.uploader.destroy(order.orderImage.publicId);
+          console.log('✅ Old image deleted:', deleteResult);
+        } catch (deleteError) {
+          console.error('⚠️ Error deleting old image:', deleteError.message);
+          // Continue anyway - new image will still be uploaded
+        }
       }
 
       order.orderImage = {
         url: req.file.path,
         publicId: req.file.filename
       };
+      console.log('✅ New image data saved to order');
     }
 
+    console.log('💾 Saving updated order to database...');
     await order.save();
+    console.log('✅ Order updated successfully with ID:', order._id);
 
     res.status(200).json({
       message: "Order updated successfully",
       order: order
     });
   } catch (error) {
-    console.error("❌ Error updating order:", error);
-    res.status(500).json({ message: "Server Error", error });
+    console.error("\n❌ ===== UPDATE ORDER ERROR =====");
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+
+    // Check if it's a Cloudinary error
+    if (error.http_code) {
+      console.error('☁️ Cloudinary Error Code:', error.http_code);
+      console.error('☁️ Cloudinary Error:', error.message);
+    }
+
+    res.status(500).json({
+      message: "Server Error",
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
 // Delete an order
 exports.deleteOrder = async (req, res) => {
   try {
+    console.log('\n🗑️ ===== DELETE ORDER REQUEST =====');
+    console.log('🆔 Order ID:', req.params.id);
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
+      console.log('❌ Order not found with ID:', req.params.id);
       return res.status(404).json({ message: "Order not found" });
     }
 
+    console.log('📦 Order found:', {
+      orderId: order.orderId,
+      customerName: order.customerName,
+      hasImage: order.orderImage ? 'YES' : 'NO',
+      imagePublicId: order.orderImage?.publicId
+    });
+
     // Delete image from Cloudinary if exists
     if (order.orderImage && order.orderImage.publicId) {
-      await cloudinary.uploader.destroy(order.orderImage.publicId);
+      console.log('🗑️ Deleting image from Cloudinary:', order.orderImage.publicId);
+      try {
+        const deleteResult = await cloudinary.uploader.destroy(order.orderImage.publicId);
+        console.log('✅ Image deleted from Cloudinary:', deleteResult);
+      } catch (deleteError) {
+        console.error('⚠️ Error deleting image from Cloudinary:', deleteError.message);
+        // Continue to delete order even if image deletion fails
+      }
     }
 
+    console.log('💾 Deleting order from database...');
     await order.deleteOne();
+    console.log('✅ Order deleted successfully');
 
     res.status(200).json({ message: "Order deleted successfully" });
   } catch (error) {
-    console.error("❌ Error deleting order:", error);
-    res.status(500).json({ message: "Server Error", error });
+    console.error("\n❌ ===== DELETE ORDER ERROR =====");
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+
+    // Check if it's a Cloudinary error
+    if (error.http_code) {
+      console.error('☁️ Cloudinary Error Code:', error.http_code);
+      console.error('☁️ Cloudinary Error:', error.message);
+    }
+
+    res.status(500).json({
+      message: "Server Error",
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
