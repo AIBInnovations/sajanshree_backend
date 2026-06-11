@@ -59,10 +59,11 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Validate item structure
+    // Validate item structure (fall back to the order-level product when an item omits it)
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (!item.product) {
+      const itemProduct = item.product || product;
+      if (!itemProduct) {
         return res.status(400).json({
           message: `Invalid item format: item[${i}] is missing "product"`,
           item
@@ -79,9 +80,9 @@ exports.createOrder = async (req, res) => {
     // Generate orderId if not provided
     const finalOrderId = orderId || `ORD-${Date.now()}`;
 
-    // Process items with details
+    // Process items with details (inherit the order product when the item has none)
     const processedItems = items.map((item) => ({
-      product: item.product,
+      product: item.product || product,
       sizes: item.sizes,
       details: item.details || {}
     }));
