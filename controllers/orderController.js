@@ -20,23 +20,28 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Handle both JSON and FormData requests
-    let requestData;
-    if (req.body && typeof req.body === 'object' && req.body.items) {
-      // JSON request
-      console.log('📋 Request type: JSON');
-      requestData = req.body;
+    // Handle both JSON and FormData requests.
+    // With FormData (image upload), `items` arrives as a JSON string and must be parsed.
+    // With a JSON request, `items` is already an array. Detect by type, not truthiness.
+    let parsedItems = req.body.items;
+    if (typeof parsedItems === 'string') {
+      console.log('📋 Request type: FormData (items sent as JSON string)');
+      try {
+        parsedItems = JSON.parse(parsedItems);
+      } catch (parseError) {
+        return res.status(400).json({ message: 'Invalid items: could not parse JSON', error: parseError.message });
+      }
     } else {
-      // FormData request - parse JSON fields
-      console.log('📋 Request type: FormData');
-      requestData = {
-        orderId: req.body.orderId,
-        customerName: req.body.customerName,
-        deliveryDate: req.body.deliveryDate,
-        product: req.body.product,
-        items: req.body.items ? JSON.parse(req.body.items) : []
-      };
+      console.log('📋 Request type: JSON');
     }
+
+    const requestData = {
+      orderId: req.body.orderId,
+      customerName: req.body.customerName,
+      deliveryDate: req.body.deliveryDate,
+      product: req.body.product,
+      items: Array.isArray(parsedItems) ? parsedItems : []
+    };
 
     console.log('📦 Parsed request data:', {
       orderId: requestData.orderId,
