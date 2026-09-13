@@ -1,0 +1,136 @@
+// WhatsApp sending via Slide (https://slide.synquic.com).
+//
+// Follows the config/cloudinary.js pattern: env read inline, presence-only
+// credential logging, ready-made client exported.
+//
+// Two hard rules:
+//   1. sendTemplateMessage NEVER throws. Every path returns a result object, so
+//      a provider outage can never turn into a failed order.
+//   2. With no SLIDE_API_KEY it no-ops cleanly. That's the normal state until the
+//      Meta templates are approved, so it must be boring and silent-ish, not an error.
+
+const FALLBACK_BASE_URL = 'https://slide.synquic.com/api/v1';
+const DEFAULT_TIMEOUT_MS = 10000;
+
+const whatsappConfig = {
+  get baseUrl() {
+    // The configured value already ends in /api/v1 — strip trailing slashes so we
+    // never build a double-prefixed URL (which 404s and looks like a routing bug).
+    return String(process.env.SLIDE_API_BASE_URL || FALLBACK_BASE_URL).replace(/\/+$/, '');
+  },
+  get templateName() {
+    return process.env.SLIDE_WHATSAPP_TEMPLATE || 'order_confirmation';
+  },
+  get templateNameWithValue() {
+    return process.env.SLIDE_WHATSAPP_TEMPLATE_WITH_VALUE || 'order_confirmation_with_value';
+  },
+  get languageCode() {
+    // Must byte-match the locale the template was approved under at Meta —
+    // "en" and "en_US" are different templates and a mismatch 404s every send.
+    return process.env.SLIDE_WHATSAPP_LANGUAGE || 'en';
+  },
+  get timeoutMs() {
+    return Number(process.env.SLIDE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+  },
+};
+
+function isWhatsAppConfigured() {
+  return Boolean(process.env.SLIDE_API_KEY) && process.env.WHATSAPP_ENABLED !== 'false';
+}
+
+console.log('🔧 Configuring WhatsApp (Slide)...');
+console.log('🔑 Slide API Key:', process.env.SLIDE_API_KEY ? '✓ Set' : '✗ Missing');
+console.log('🌐 Slide Base URL:', whatsappConfig.baseUrl);
+console.log('🧾 Template:', `${whatsappConfig.templateName} (${whatsappConfig.languageCode})`);
+if (!isWhatsAppConfigured()) {
+  console.log('💤 WhatsApp sending is DISABLED — orders will still save normally.');
+}
+// Note: no boot-time connectivity ping (unlike Cloudinary). Slide's nearest
+// equivalent needs the whatsapp:templates:read scope, which a send-only key
+// won't have, so it would log an alarming 403 on every restart.
+
+let warnedNotConfigured = false;
+
+/**
+ * Send one pre-approved WhatsApp template message. Never throws.
+ *
+ * @returns {Promise<{ok: boolean, status: string, [key: string]: any}>}
+ */
+async function sendTemplateMessage({ to, templateName, languageCode, bodyParameters }) {
+  if (!isWhatsAppConfigured()) {
+    if (!warnedNotConfigured) {
+      console.log('💤 Skipping WhatsApp send: SLIDE_API_KEY not set (logged once per process).');
+      warnedNotConfigured = true;
+    }
+    return { ok: false, status: 'disabled', retryable: false, message: 'WhatsApp is not configured' };
+  }
+
+  const url = `${whatsappConfig.baseUrl}/whatsapp/send-template`;
+  const payload = {
+    to,
+    templateName: templateName || whatsappConfig.templateName,
+    languageCode: languageCode || whatsappConfig.languageCode,
+    components: [{ type: 'body', parameters: bodyParameters }],
+  };
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.SLIDE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(whatsappConfig.timeoutMs),
+    });
+  } catch (error) {
+    const timedOut = error.name === 'TimeoutError' || error.name === 'AbortError';
+    return {
+      ok: false,
+      status: 'failed',
+      httpStatus: null,
+      retryable: true,
+      message: timedOut
+        ? `Slide request timed out after ${whatsappConfig.timeoutMs}ms`
+        : error.message,
+    };
+  }
+
+  // Read as text first: an edge/proxy 502 returns HTML, and res.json() would throw,
+  // which would break the never-throws contract.
+  const rawBody = await response.text().catch(() => '');
+  let body = null;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    body = null;
+  }
+
+  if (response.ok) {
+    return {
+      ok: true,
+      status: 'sent',
+      wamid: body?.wamid,
+      conversationId: body?.conversationId,
+      providerStatus: body?.status,
+      templateName: payload.templateName,
+      languageCode: payload.languageCode,
+    };
+  }
+
+  // 429 and 5xx are worth retrying. A 400/401/403/404/422 means bad key, missing
+  // scope, or an unapproved template — retrying those just burns quota.
+  const retryable = response.status === 429 || response.status >= 500;
+  return {
+    ok: false,
+    status: 'failed',
+    httpStatus: response.status,
+    retryable,
+    errorCode: body?.error,
+    message: body?.message || rawBody.slice(0, 300) || `Slide returned ${response.status}`,
+    retryAfterSeconds: Number(response.headers.get('retry-after')) || null,
+  };
+}
+
+module.exports = { isWhatsAppConfigured, sendTemplateMessage, whatsappConfig };

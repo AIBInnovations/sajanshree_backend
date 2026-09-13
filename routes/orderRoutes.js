@@ -5,6 +5,7 @@ const {
   getOrderById,
   updateOrder,
   deleteOrder,
+  resendOrderWhatsApp,
 } = require("../controllers/orderController");
 const protect = require("../middleware/authMiddleware");
 const { uploadOrderImage } = require("../config/cloudinary"); // Import Cloudinary upload
@@ -17,5 +18,6 @@ router.get("/", protect, getAllOrders);
 router.get("/:id", protect, getOrderById);
 router.put("/:id", protect, uploadOrderImage.single("orderImage"), updateOrder);
 router.delete("/:id", protect, deleteOrder);
+router.post("/:id/whatsapp", protect, resendOrderWhatsApp);
 
 module.exports = router;

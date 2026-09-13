@@ -1,6 +1,16 @@
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { cloudinary } = require("../config/cloudinary");
+const { isWhatsAppConfigured } = require("../config/whatsapp");
+const { normalizeToWhatsAppNumber } = require("../utils/phone");
+const {
+  buildInitialNotificationState,
+  sendOrderConfirmation,
+} = require("../utils/orderNotifications");
+
+// Manual resends are rate-limited per order to stop double-click storms
+// from burning WhatsApp quota (and money).
+const RESEND_COOLDOWN_MS = 30 * 1000;
 
 // Create a new order with image upload
 
@@ -39,10 +49,17 @@ exports.createOrder = async (req, res) => {
     const requestData = {
       orderId: req.body.orderId,
       customer: req.body.customer,
-      phone: req.body.phone,
+      // `customerPhone` is what the order form sends; `phone` stays supported for
+      // older/API callers. Either one feeds both the order and the Customer upsert.
+      phone: req.body.customerPhone || req.body.phone,
       customerName: req.body.customerName,
       deliveryDate: req.body.deliveryDate,
       product: req.body.product,
+      orderDescription: req.body.orderDescription,
+      // FormData sends booleans as the strings "true"/"false".
+      whatsappConsent: req.body.whatsappConsent === true || req.body.whatsappConsent === 'true',
+      includeValueInWhatsApp:
+        req.body.includeValueInWhatsApp === true || req.body.includeValueInWhatsApp === 'true',
       items: Array.isArray(parsedItems) ? parsedItems : []
     };
 
@@ -61,6 +78,9 @@ exports.createOrder = async (req, res) => {
       customerName,
       deliveryDate,
       product,
+      orderDescription,
+      whatsappConsent,
+      includeValueInWhatsApp,
       items
     } = requestData;
 
@@ -141,10 +161,17 @@ exports.createOrder = async (req, res) => {
       orderId: finalOrderId,
       customer: customerRef,
       customerName,
+      customerPhone: phone,
+      whatsappConsent,
+      includeValueInWhatsApp,
       product,
       deliveryDate,
       items: processedItems,
-      orderImage: orderImageData
+      orderDescription,
+      orderImage: orderImageData,
+      // Seeded here so it rides the save below at no extra cost and is already
+      // present in the 201 body the frontend renders.
+      whatsappNotification: buildInitialNotificationState(phone, whatsappConsent)
     });
 
     console.log('💾 Saving order to database...');
@@ -155,6 +182,16 @@ exports.createOrder = async (req, res) => {
       message: "Order created successfully",
       order: newOrder,
     });
+
+    // Fire-and-forget, AFTER the response. Deliberately not awaited: a provider
+    // error thrown inside the try would be caught below and return 500 for an
+    // order that saved fine, prompting the admin to re-submit and duplicate it.
+    // Same precedent as the Cloudinary failures elsewhere in this file — log and swallow.
+    if (newOrder.whatsappNotification?.status === 'queued') {
+      sendOrderConfirmation(newOrder._id).catch((err) =>
+        console.error('⚠️ WhatsApp confirmation failed (order was saved):', err.message)
+      );
+    }
   } catch (error) {
     console.error("\n❌ ===== CREATE ORDER ERROR =====");
     console.error('Error type:', error.name);
@@ -256,6 +293,7 @@ exports.updateOrder = async (req, res) => {
     const requestData = {
       customer: req.body.customer,
       customerName: req.body.customerName,
+      customerPhone: req.body.customerPhone,
       deliveryDate: req.body.deliveryDate,
       product: req.body.product,
       items: Array.isArray(parsedItems) ? parsedItems : undefined,
@@ -266,11 +304,22 @@ exports.updateOrder = async (req, res) => {
     // Update fields if provided
     if (requestData.customer) order.customer = requestData.customer;
     if (requestData.customerName) order.customerName = requestData.customerName;
+    if (requestData.customerPhone) order.customerPhone = requestData.customerPhone;
     if (requestData.deliveryDate) order.deliveryDate = requestData.deliveryDate;
     if (requestData.product) order.product = requestData.product;
     if (requestData.items) order.items = requestData.items;
     if (requestData.orderDescription) order.orderDescription = requestData.orderDescription;
     if (requestData.status) order.status = requestData.status;
+
+    // Booleans need an explicit presence check — `if (false)` would never apply,
+    // so unticking a box would silently fail to save.
+    if (req.body.whatsappConsent !== undefined) {
+      order.whatsappConsent = req.body.whatsappConsent === true || req.body.whatsappConsent === 'true';
+    }
+    if (req.body.includeValueInWhatsApp !== undefined) {
+      order.includeValueInWhatsApp =
+        req.body.includeValueInWhatsApp === true || req.body.includeValueInWhatsApp === 'true';
+    }
 
     // Handle new image upload
     if (req.file) {
@@ -407,5 +456,82 @@ exports.updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error });
+  }
+};
+
+// Manually (re)send the WhatsApp confirmation for an order.
+// Body (all optional): { force?: boolean, phone?: string, consent?: boolean }
+exports.resendOrderWhatsApp = async (req, res) => {
+  try {
+    console.log('\n📲 ===== RESEND WHATSAPP REQUEST =====');
+
+    if (!isWhatsAppConfigured()) {
+      return res.status(503).json({ message: "WhatsApp is not configured on this server" });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    const { force, phone, consent } = req.body || {};
+
+    // Let the admin fix a missing/typo'd number inline, and make the fix stick.
+    if (phone) {
+      const check = normalizeToWhatsAppNumber(phone);
+      if (!check.ok) {
+        return res.status(400).json({ message: "That phone number is not valid for WhatsApp", reason: check.reason });
+      }
+      order.customerPhone = phone;
+    }
+
+    // Recording consent and sending is one click from the UI's confirm dialog.
+    if (consent === true && !order.whatsappConsent) order.whatsappConsent = true;
+    if (phone || consent === true) await order.save();
+
+    if (!order.customerPhone) {
+      return res.status(400).json({ message: "No phone number on this order" });
+    }
+    if (!order.whatsappConsent) {
+      return res.status(400).json({
+        message: "Customer has not consented to WhatsApp updates",
+        needsConsent: true,
+      });
+    }
+
+    const existing = order.whatsappNotification;
+    if (existing?.status === "sent" && force !== true) {
+      return res.status(409).json({
+        message: "This order has already been sent to WhatsApp",
+        whatsappNotification: existing,
+      });
+    }
+
+    const lastAttempt = existing?.lastAttemptAt ? new Date(existing.lastAttemptAt).getTime() : 0;
+    const sinceLast = Date.now() - lastAttempt;
+    if (lastAttempt && sinceLast < RESEND_COOLDOWN_MS) {
+      return res.status(429).json({
+        message: "Please wait a moment before resending",
+        retryAfterSeconds: Math.ceil((RESEND_COOLDOWN_MS - sinceLast) / 1000),
+      });
+    }
+
+    const result = await sendOrderConfirmation(order._id);
+    const refreshed = await Order.findById(order._id).select("whatsappNotification");
+
+    if (!result.ok) {
+      return res.status(502).json({
+        message: "WhatsApp provider rejected the message",
+        providerStatus: result.status,
+        providerMessage: result.message,
+        whatsappNotification: refreshed?.whatsappNotification,
+      });
+    }
+
+    res.status(200).json({
+      message: "WhatsApp message sent",
+      whatsappNotification: refreshed?.whatsappNotification,
+    });
+  } catch (error) {
+    console.error("❌ Resend WhatsApp error:", error.message);
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };

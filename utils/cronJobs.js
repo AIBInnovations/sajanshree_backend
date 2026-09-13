@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const Order = require("../models/orderModel");
-const mongoose = require("mongoose");
+const { isWhatsAppConfigured } = require("../config/whatsapp");
+const { sendOrderConfirmation, MAX_ATTEMPTS } = require("./orderNotifications");
 
 // Scheduled job to check for overdue orders daily
 cron.schedule("0 0 * * *", async () => {
@@ -31,6 +32,40 @@ cron.schedule("0 0 * * *", async () => {
     }
   } catch (error) {
     console.error("❌ Error running cron job:", error);
+  }
+});
+
+// Retry sweep for WhatsApp confirmations.
+//
+// The send in createOrder is fire-and-forget, so an in-flight message is lost if
+// the host restarts or spins down (Render does this on idle) — leaving the order
+// stuck at "queued" forever. This picks those up, along with retryable failures.
+const WHATSAPP_SWEEP_BATCH = 20;
+const WHATSAPP_SWEEP_SPACING_MS = 1200; // Slide allows 60/min per key; stay well under
+const WHATSAPP_SWEEP_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+
+cron.schedule("*/15 * * * *", async () => {
+  try {
+    if (!isWhatsAppConfigured()) return;
+
+    const pending = await Order.find({
+      "whatsappNotification.status": { $in: ["queued", "failed"] },
+      "whatsappNotification.attempts": { $lt: MAX_ATTEMPTS },
+      createdAt: { $gt: new Date(Date.now() - WHATSAPP_SWEEP_LOOKBACK_MS) },
+    })
+      .select("_id orderId")
+      .limit(WHATSAPP_SWEEP_BATCH);
+
+    if (pending.length === 0) return;
+
+    console.log(`🔄 WhatsApp sweep: retrying ${pending.length} order(s)...`);
+    for (const order of pending) {
+      await sendOrderConfirmation(order._id);
+      await new Promise((resolve) => setTimeout(resolve, WHATSAPP_SWEEP_SPACING_MS));
+    }
+    console.log("✅ WhatsApp sweep finished.");
+  } catch (error) {
+    console.error("❌ Error running WhatsApp sweep:", error.message);
   }
 });
 
