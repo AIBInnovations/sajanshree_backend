@@ -1,7 +1,9 @@
 const cron = require("node-cron");
 const Order = require("../models/orderModel");
+const TallyInvoice = require("../models/tallyInvoiceModel");
 const { isWhatsAppConfigured } = require("../config/whatsapp");
 const { sendOrderConfirmation, MAX_ATTEMPTS } = require("./orderNotifications");
+const { sendInvoiceNotification } = require("./invoiceNotifications");
 
 // Scheduled job to check for overdue orders daily
 cron.schedule("0 0 * * *", async () => {
@@ -66,6 +68,35 @@ cron.schedule("*/15 * * * *", async () => {
     console.log("✅ WhatsApp sweep finished.");
   } catch (error) {
     console.error("❌ Error running WhatsApp sweep:", error.message);
+  }
+});
+
+// The same sweep for invoices pushed from TallyPrime. Kept as a separate schedule
+// rather than folded into the order sweep: the two share a Slide rate limit, and
+// interleaving them in one loop would let a backlog of orders starve invoices
+// (or the reverse) behind the batch cap.
+cron.schedule("7-59/15 * * * *", async () => {
+  try {
+    if (!isWhatsAppConfigured()) return;
+
+    const pending = await TallyInvoice.find({
+      "whatsappNotification.status": { $in: ["queued", "failed"] },
+      "whatsappNotification.attempts": { $lt: MAX_ATTEMPTS },
+      createdAt: { $gt: new Date(Date.now() - WHATSAPP_SWEEP_LOOKBACK_MS) },
+    })
+      .select("_id voucherNumber")
+      .limit(WHATSAPP_SWEEP_BATCH);
+
+    if (pending.length === 0) return;
+
+    console.log(`🔄 Tally invoice sweep: retrying ${pending.length} invoice(s)...`);
+    for (const invoice of pending) {
+      await sendInvoiceNotification(invoice._id);
+      await new Promise((resolve) => setTimeout(resolve, WHATSAPP_SWEEP_SPACING_MS));
+    }
+    console.log("✅ Tally invoice sweep finished.");
+  } catch (error) {
+    console.error("❌ Error running Tally invoice sweep:", error.message);
   }
 });
 

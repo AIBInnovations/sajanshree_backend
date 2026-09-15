@@ -1,0 +1,155 @@
+const TallyInvoice = require("../models/tallyInvoiceModel");
+const { sendInvoiceNotification } = require("../utils/invoiceNotifications");
+
+// Tally writes dates as YYYYMMDD (e.g. 20260812), not ISO. Accept both so the
+// companion service can forward whichever form it happens to have.
+const MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+
+function parseTallyDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(raw);
+  if (compact) {
+    const [, y, m, d] = compact;
+    // Construct in UTC: a local-time Date would shift the invoice a day backwards
+    // for anyone running the server west of the shop.
+    return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  }
+
+  // Tally also sends "15-Sep-26" (observed from TDL on 15-Sep-2026). new Date()
+  // parses that as LOCAL midnight, which lands a day early once stored as UTC.
+  const dmyMatch = /^(\d{1,2})-([A-Za-z]{3})-(\d{2}|\d{4})$/.exec(raw);
+  if (dmyMatch) {
+    const month = MONTHS[dmyMatch[2].toLowerCase()];
+    if (month !== undefined) {
+      let year = Number(dmyMatch[3]);
+      if (year < 100) year += 2000;
+      return new Date(Date.UTC(year, month, Number(dmyMatch[1])));
+    }
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * POST /api/tally/invoice-whatsapp
+ *
+ * Called by the local companion service on the shop PC after a sales voucher is
+ * saved in TallyPrime.
+ *
+ * Contract with the companion, which is the whole point of this endpoint:
+ *   2xx = "we own this invoice now, stop retrying."
+ *   5xx = "we failed to store it, retry later."
+ * The WhatsApp send is NOT part of that contract. It happens after the response,
+ * and its failures are retried by our own cron sweep. If the send were awaited,
+ * a Slide outage would surface as a 5xx, the companion would retry, and the
+ * customer would get duplicate messages once Slide recovered.
+ */
+const createInvoiceNotification = async (req, res) => {
+  try {
+    const {
+      voucherGuid,
+      voucherNumber,
+      voucherType,
+      voucherDate,
+      companyName,
+      partyLedgerName,
+      partyPhone,
+      phoneCapturedAtBilling,
+      amount,
+    } = req.body || {};
+
+    const missing = ["voucherGuid", "voucherNumber", "partyLedgerName"].filter(
+      (field) => !String(req.body?.[field] || "").trim()
+    );
+    if (missing.length) {
+      return res.status(400).json({
+        message: `Missing required field(s): ${missing.join(", ")}`,
+      });
+    }
+
+    // Idempotency. The companion retries on a flaky shop connection, and Tally
+    // itself can fire the hook twice if the operator re-accepts a voucher. Without
+    // this the customer gets the same bill messaged to them repeatedly.
+    const existing = await TallyInvoice.findOne({ voucherGuid: String(voucherGuid).trim() });
+    if (existing) {
+      return res.status(200).json({
+        message: "Already received",
+        duplicate: true,
+        invoiceId: existing._id,
+        whatsapp: existing.whatsappNotification?.status || null,
+      });
+    }
+
+    let invoice;
+    try {
+      invoice = await TallyInvoice.create({
+        voucherGuid: String(voucherGuid).trim(),
+        voucherNumber: String(voucherNumber).trim(),
+        voucherType: voucherType || "Sales",
+        voucherDate: parseTallyDate(voucherDate),
+        companyName,
+        partyLedgerName: String(partyLedgerName).trim(),
+        partyPhone,
+        phoneCapturedAtBilling: Boolean(phoneCapturedAtBilling),
+        amount: Number(amount) || 0,
+      });
+    } catch (error) {
+      // Two identical posts can race past the findOne above. The unique index is
+      // the real guard; this turns the collision into the same answer as a
+      // sequential duplicate rather than a 500 the companion would retry forever.
+      if (error.code === 11000) {
+        const winner = await TallyInvoice.findOne({ voucherGuid: String(voucherGuid).trim() });
+        return res.status(200).json({
+          message: "Already received",
+          duplicate: true,
+          invoiceId: winner?._id,
+        });
+      }
+      throw error;
+    }
+
+    // Respond before sending — see the contract note above.
+    res.status(202).json({
+      message: "Invoice received",
+      invoiceId: invoice._id,
+      voucherNumber: invoice.voucherNumber,
+    });
+
+    // Fire and forget. sendInvoiceNotification never throws, but .catch() guards
+    // against an unhandled rejection taking the process down if that ever changes.
+    sendInvoiceNotification(invoice._id).catch((error) =>
+      console.error("⚠️ Background invoice notification failed:", error.message)
+    );
+  } catch (error) {
+    console.error("❌ createInvoiceNotification error:", error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Failed to record invoice" });
+    }
+  }
+};
+
+/**
+ * POST /api/tally/invoices/:id/whatsapp — manual resend for an admin.
+ */
+const resendInvoiceWhatsApp = async (req, res) => {
+  try {
+    const invoice = await TallyInvoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+
+    const result = await sendInvoiceNotification(invoice._id);
+    const refreshed = await TallyInvoice.findById(invoice._id).lean();
+
+    return res.status(result.ok ? 200 : 422).json({
+      message: result.ok ? "WhatsApp message sent" : "WhatsApp message not sent",
+      whatsapp: refreshed?.whatsappNotification || null,
+    });
+  } catch (error) {
+    console.error("❌ resendInvoiceWhatsApp error:", error.message);
+    return res.status(500).json({ message: "Failed to resend" });
+  }
+};
+
+module.exports = { createInvoiceNotification, resendInvoiceWhatsApp, parseTallyDate };

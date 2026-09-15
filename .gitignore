@@ -5,3 +5,10 @@ uploads/
 .env
 .env.*
 !.env.example
+
+# Tally companion service: config.json carries a live TALLY_API_KEY, and the
+# queue holds real customer phone numbers. Only the .example file is tracked.
+tally-companion/config.json
+tally-companion/queue/
+tally-companion/dead-letter/
+tally-companion/*.log

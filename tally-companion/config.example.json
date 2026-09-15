@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy to config.json and fill in. config.json is gitignored — it holds a live API key.",
+
+  "port": 5111,
+  "apiBaseUrl": "https://your-backend-host",
+  "apiKey": "paste the TALLY_API_KEY from the backend .env here",
+
+  "pollIntervalMs": 15000,
+  "requestTimeoutMs": 20000,
+  "maxAttempts": 12
+}

@@ -1,35 +1,8 @@
 const mongoose = require("mongoose");
 
 // Outcome of the WhatsApp order-confirmation message for this order.
-// "sent" means Slide/Meta accepted the message, NOT that the customer received it —
-// delivery receipts would need webhooks, which we don't consume yet.
-const whatsappNotificationSchema = new mongoose.Schema(
-  {
-    status: {
-      type: String,
-      enum: [
-        "queued",
-        "sent",
-        "failed",
-        "disabled",              // no API key configured on the server
-        "skipped_no_phone",
-        "skipped_invalid_phone",
-        "skipped_no_consent",
-      ],
-    },
-    to: { type: String },        // the normalized number we actually sent to
-    templateName: { type: String },
-    languageCode: { type: String },
-    wamid: { type: String },
-    conversationId: { type: String },
-    attempts: { type: Number, default: 0 },
-    lastError: { type: String },
-    lastErrorCode: { type: Number },
-    lastAttemptAt: { type: Date },
-    sentAt: { type: Date },
-  },
-  { _id: false }
-);
+// Shared with tallyInvoiceModel — see the file for what each status means.
+const whatsappNotificationSchema = require("./whatsappNotificationSchema");
 
 // Define the schema for an Order
 const orderSchema = new mongoose.Schema(

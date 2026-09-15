@@ -38,12 +38,31 @@ function isWhatsAppConfigured() {
   return Boolean(process.env.SLIDE_API_KEY) && process.env.WHATSAPP_ENABLED !== 'false';
 }
 
+// Test mode: divert EVERY outbound message to one number.
+//
+// Deliberately central rather than per-feature. While this is set, nothing can
+// reach a real customer by any path — orders, Tally invoices, cron retries — so
+// testing a new integration on live data can't embarrass anyone. A per-feature
+// switch would leave the other paths live, which is the failure we're avoiding.
+//
+// The tradeoff is that it's silent to the caller, so it logs on every single send.
+function testRedirectNumber() {
+  return String(process.env.WHATSAPP_TEST_REDIRECT_TO || '').replace(/\D/g, '');
+}
+
 console.log('🔧 Configuring WhatsApp (Slide)...');
 console.log('🔑 Slide API Key:', process.env.SLIDE_API_KEY ? '✓ Set' : '✗ Missing');
 console.log('🌐 Slide Base URL:', whatsappConfig.baseUrl);
 console.log('🧾 Template:', `${whatsappConfig.templateName} (${whatsappConfig.languageCode})`);
 if (!isWhatsAppConfigured()) {
   console.log('💤 WhatsApp sending is DISABLED — orders will still save normally.');
+}
+if (testRedirectNumber()) {
+  console.warn('🧪 ============================================================');
+  console.warn(`🧪 WHATSAPP TEST MODE ACTIVE — every message goes to ${testRedirectNumber()}`);
+  console.warn('🧪 No real customer can receive a message while this is set.');
+  console.warn('🧪 Clear WHATSAPP_TEST_REDIRECT_TO before going live.');
+  console.warn('🧪 ============================================================');
 }
 // Note: no boot-time connectivity ping (unlike Cloudinary). Slide's nearest
 // equivalent needs the whatsapp:templates:read scope, which a send-only key
@@ -66,8 +85,19 @@ async function sendTemplateMessage({ to, templateName, languageCode, bodyParamet
   }
 
   const url = `${whatsappConfig.baseUrl}/whatsapp/send-template`;
+
+  let recipient = to;
+  const redirect = testRedirectNumber();
+  if (redirect && redirect !== to) {
+    console.warn(
+      `🧪 WHATSAPP TEST MODE: diverting message intended for ${to} → ${redirect}. ` +
+        `Unset WHATSAPP_TEST_REDIRECT_TO to send to real customers.`
+    );
+    recipient = redirect;
+  }
+
   const payload = {
-    to,
+    to: recipient,
     templateName: templateName || whatsappConfig.templateName,
     languageCode: languageCode || whatsappConfig.languageCode,
     components: [{ type: 'body', parameters: bodyParameters }],
@@ -116,6 +146,11 @@ async function sendTemplateMessage({ to, templateName, languageCode, bodyParamet
       providerStatus: body?.status,
       templateName: payload.templateName,
       languageCode: payload.languageCode,
+      // The number actually messaged. While test mode is on this is NOT the
+      // recipient the caller asked for, and a record storing the intended
+      // number would claim a customer was messaged when they were not.
+      deliveredTo: recipient,
+      redirected: recipient !== to,
     };
   }
 

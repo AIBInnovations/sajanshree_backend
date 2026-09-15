@@ -143,7 +143,10 @@ async function sendOrderConfirmation(orderId, options = {}) {
     });
 
     const base = {
-      to: normalized.value,
+      // Who we actually messaged, which differs while WHATSAPP_TEST_REDIRECT_TO
+      // is set. The party's own number is already on the record, so storing
+      // the truth here loses nothing.
+      to: result.deliveredTo || normalized.value,
       templateName,
       languageCode: whatsappConfig.languageCode,
       attempts,

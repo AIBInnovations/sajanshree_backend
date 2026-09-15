@@ -71,12 +71,16 @@ const orderRoutes = require("./routes/orderRoutes");
 const userRoutes = require("./routes/userRoutes");
 const productRoutes = require("./routes/productRoutes");
 const customerRoutes = require("./routes/customerRoutes");
+const tallyRoutes = require("./routes/tallyRoutes");
 
 // Use Routes
 app.use("/api/orders", orderRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/customers", customerRoutes);
+// Called by the TallyPrime companion service on the shop PC. Not a browser
+// origin, so the CORS allowlist above doesn't apply to it.
+app.use("/api/tally", tallyRoutes);
 
 const mongoose = require("mongoose");
 

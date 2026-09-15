@@ -1,0 +1,299 @@
+;; ===========================================================================
+;; Sajan Shree Garments — WhatsApp invoice notification add-on for TallyPrime
+;;
+;; Target: TallyPrime Release 7.1, Silver edition, company "Sajan Shree Garments"
+;;
+;; WHAT IT DOES
+;;   On a Sales voucher, Alt+J asks whether to WhatsApp the party. If the party
+;;   ledger has no mobile number it asks for one, writes it back onto the ledger
+;;   permanently, then hands the invoice to the local companion service.
+;;
+;; TWO WAYS IN
+;;   Alt+J on a sales voucher, and automatically when one is saved (the hook at
+;;   the bottom of this file, enabled 16-Sep-2026). Alt+J, not Alt+Q: Alt+Q is
+;;   reserved by TallyPrime.
+;;
+;;   The on-save hook is the risky half. "On : Form Accept" OVERRIDES Tally's
+;;   default save action, so if this file breaks, sales vouchers stop saving on
+;;   live books during business hours. If that ever happens, comment out the
+;;   three hook lines at the bottom and restart Tally — the button still works.
+;;
+;; WHY IT POSTS TO 127.0.0.1 AND NOT STRAIGHT TO THE API
+;;   Tally documents no timeout on its HTTP actions, so a slow endpoint appears to
+;;   freeze the voucher screen. The companion answers from localhost in about a
+;;   millisecond and owns the retries, the API key and the internet connection.
+;;
+;; VERIFIED AGAINST THIS COMPANY'S DATA (13-Sep-2026, read-only over port 9000):
+;;   LEDGERMOBILE is the correct field - 113 of 659 ledgers have it populated.
+;;   Voucher fields confirmed present: GUID, VOUCHERNUMBER, PARTYLEDGERNAME, DATE.
+;; ===========================================================================
+
+[System: Formula]
+    SSWEndpoint : "http://127.0.0.1:5111/enqueue"
+
+    ;; Picks the party's own row out of the voucher's ledger entries. Verified
+    ;; against this company's Day Book export: exactly one entry per sales
+    ;; voucher carries IsPartyLedger = Yes.
+    SSWPartyEntry : $IsPartyLedger
+
+;; Shared with the request report below, so these must be system-scope: a
+;; function-local Variable would not be visible when the report is rendered.
+;;
+;; Each needs BOTH a [Variable:] definition (which gives it a type — Tally calls
+;; this its "description") and a [System: Variable] default. Declaring only the
+;; defaults fails at load with "Could not find description!".
+
+[Variable: SSWGuid]
+    Type : String
+
+[Variable: SSWVchNo]
+    Type : String
+
+[Variable: SSWVchType]
+    Type : String
+
+[Variable: SSWDate]
+    Type : String
+
+[Variable: SSWParty]
+    Type : String
+
+[Variable: SSWMobile]
+    Type : String
+
+[Variable: SSWAmount]
+    Type : String
+
+[Variable: SSWCompany]
+    Type : String
+
+[Variable: SSWCaptured]
+    Type : String
+
+[Variable: SSWNewNo]
+    Type : String
+
+[System: Variable]
+    SSWGuid     : ""
+    SSWVchNo    : ""
+    SSWVchType  : ""
+    SSWDate     : ""
+    SSWParty    : ""
+    SSWMobile   : ""
+    SSWAmount   : ""
+    SSWCompany  : ""
+    SSWCaptured : ""
+    SSWNewNo    : ""
+
+;; ---------------------------------------------------------------- the button
+
+[#Form: Sales Color]
+    Add : Button : SSWWhatsAppButton
+
+[Button: SSWWhatsAppButton]
+    Key    : Alt + J
+    Title  : "WhatsApp"
+    Action : Call : SSWSendInvoice
+
+;; -------------------------------------------------------------- main routine
+
+[Function: SSWSendInvoice]
+
+    010 : SET : SSWParty    : $PartyLedgerName
+    020 : SET : SSWGuid     : $Guid
+    030 : SET : SSWVchNo    : $VoucherNumber
+    040 : SET : SSWVchType  : $VoucherTypeName
+    050 : SET : SSWDate     : $$String:$Date:UniversalDate
+    060 : SET : SSWCompany  : ##SVCurrentCompany
+    070 : SET : SSWCaptured : "false"
+    080 : SET : SSWNewNo    : ""
+
+    090 : IF : $$IsEmpty:##SSWParty
+    100 :     MSGBOX : "WhatsApp" : "This voucher has no party ledger, so there is nobody to message."
+    110 :     RETURN
+    120 : ENDIF
+
+    ;; Read the number already on the party ledger master.
+    130 : SET : SSWMobile : $LedgerMobile:Ledger:##SSWParty
+
+    ;; Invoice total = the party's own ledger entry, the single row flagged
+    ;; IsPartyLedger. Abs because Tally stores it signed (negative on a sale).
+    ;; The earlier attempt, $$Abs:$Amount:Ledger:<party>, returned empty.
+    140 : SET : SSWAmount : $$String:$$Abs:$Amount
+
+    150 : QUERY BOX : "Send WhatsApp message to " + ##SSWParty + " ?" : Yes : No
+    160 : IF : NOT $$LastResult
+    170 :     RETURN
+    180 : ENDIF
+
+    ;; No number on the ledger: ask, then persist it so we never ask again.
+    190 : IF : $$IsEmpty:##SSWMobile
+    200 :     ALTER : SSWAskMobileReport
+    210 :     SET : SSWMobile : ##SSWNewNo
+    220 :     IF : $$IsEmpty:##SSWMobile
+    230 :         MSGBOX : "WhatsApp" : "No number entered. Nothing was sent."
+    240 :         RETURN
+    250 :     ENDIF
+    260 :     SET : SSWCaptured : "true"
+    270 :     CALL : SSWSaveMobileToLedger : ##SSWParty : ##SSWMobile
+    280 : ENDIF
+
+    290 : HTTP Request : @@SSWEndpoint : POST : JSON : ASCII : SSWRequestReport : SSWAfterPost
+
+;; ------------------------------------------------- write the number back
+
+;; The whole reason this add-on exists rather than Tally's built-in WhatsApp
+;; feature: the built-in one cannot persist a number typed at billing time.
+;; ACCEPT ALTER (not SAVE TARGET) because the ledger already exists — SAVE TARGET
+;; on a named object that is missing would fail rather than create.
+[Function: SSWSaveMobileToLedger]
+    Parameter : pLedger : String
+    Parameter : pMobile : String
+
+    010 : NEW OBJECT : Ledger : ##pLedger
+    020 : SET VALUE  : LedgerMobile : ##pMobile
+    030 : ACCEPT ALTER
+
+;; --------------------------------------------------------- ask for a number
+
+[Report: SSWAskMobileReport]
+    Form  : SSWAskMobileForm
+    Title : "WhatsApp Number"
+
+[Form: SSWAskMobileForm]
+    Part       : SSWAskMobilePart
+    Width      : 50% Screen
+    Height     : 20% Screen
+    Space Top  : 1
+    Background : @@SV_LIGHTTHEME
+
+[Part: SSWAskMobilePart]
+    Line : SSWAskMobileLine
+
+[Line: SSWAskMobileLine]
+    Fields : Short Prompt, SSWAskMobileField
+    Local  : Field : Short Prompt : Set as : "Mobile No :"
+
+;; Name Field, not Number Field: a phone number is a string. A numeric field
+;; would strip a leading zero and mangle anything typed with +91.
+[Field: SSWAskMobileField]
+    Use      : Name Field
+    Modifies : SSWNewNo
+    Width    : 18
+    Maximum  : 15
+
+;; ------------------------------------------------------- the request body
+;;
+;; Fields read ##variables, NOT the voucher object.
+;;
+;; Established 15-Sep-2026 with a hard-coded probe field. This report renders
+;; literals (probe came through) and variables (##SVCurrentCompany came
+;; through), but NOT voucher object methods - every $Guid / $PartyLedgerName
+;; field was simply absent from the payload. The report has no object context.
+;;
+;; The function sets these variables while the voucher IS in context, which is
+;; why that half works. Earlier attempts to use variables here looked like they
+;; failed, but at that point no field rendered at all - the Line used the
+;; singular "Field" instead of "Fields", so nothing was declared.
+;;
+;; The companion flattens whatever nesting arrives, so the wrapper tag is free.
+
+[Report: SSWRequestReport]
+    Form : SSWRequestForm
+
+[Form: SSWRequestForm]
+    Part : SSWRequestPart
+
+;; Scroll : Vertical is not cosmetic here. Without it the Part renders its own
+;; XML Tag but never descends into its Line, so the body comes out as
+;; {"ENVELOPE":{"invoice":{}}} — even a hard-coded literal field is dropped.
+;; Tally's own documented HTTP Post example carries it; omitting it cost us
+;; three debugging rounds that looked like variable-scope problems.
+[Part: SSWRequestPart]
+    Line    : SSWRequestLine
+    XML Tag : "invoice"
+    Scroll  : Vertical
+
+;; The attribute is "Fields", PLURAL. With the singular "Field" the line declares
+;; nothing, so the part opens its object and then aborts mid-render — which is
+;; exactly what we saw: 42 bytes of unterminated JSON ending at '"invoice": {'.
+;; The empty XML Tag is gone too; it was added on the same round and is not needed.
+[Line: SSWRequestLine]
+    Fields : SSWFGuid, SSWFVchNo, SSWFType, SSWFDate, SSWFParty
+    Fields : SSWFMobile, SSWFAmount, SSWFCompany, SSWFCaptured
+
+[Field: SSWFGuid]
+    XML Tag : "voucherGuid"
+    Set as  : ##SSWGuid
+
+[Field: SSWFVchNo]
+    XML Tag : "voucherNumber"
+    Set as  : ##SSWVchNo
+
+[Field: SSWFType]
+    XML Tag : "voucherType"
+    Set as  : ##SSWVchType
+
+[Field: SSWFDate]
+    XML Tag : "voucherDate"
+    Set as  : ##SSWDate
+
+[Field: SSWFParty]
+    XML Tag : "partyLedgerName"
+    Set as  : ##SSWParty
+
+;; Re-read from the ledger rather than reusing the typed value, so that when the
+;; write-back above has just run, this reflects what was actually persisted.
+[Field: SSWFMobile]
+    XML Tag : "partyPhone"
+    Set as  : ##SSWMobile
+
+;; A sales voucher has no single total field — <AMOUNT> appears ~28 times per
+;; voucher across ledger entries and inventory lines. The invoice total is the
+;; party's own ledger entry, which is the one row flagged IsPartyLedger.
+;; Abs because Tally stores it signed (negative on a sale).
+[Field: SSWFAmount]
+    XML Tag : "amount"
+    Set as  : ##SSWAmount
+
+[Field: SSWFCompany]
+    XML Tag : "companyName"
+    Set as  : ##SVCurrentCompany
+
+;; Audit only: was this number typed at the till, or already on the ledger?
+;; Worth keeping — it shows how fast the 546 parties with no number are filling in.
+[Field: SSWFCaptured]
+    XML Tag : "phoneCapturedAtBilling"
+    Set as  : ##SSWCaptured
+
+;; ------------------------------------------------------------ the response
+
+;; The companion answers instantly and owns all retries, so there is nothing to
+;; recover from here. This only tells the operator it was handed over.
+[Function: SSWAfterPost]
+    010 : MSGBOX : "WhatsApp" : "Invoice " + ##SSWVchNo + " queued for " + ##SSWParty + "."
+
+;; ===========================================================================
+;; PHASE 2 — the Alt+J button IS now proven (16-Sep-2026): prompt, number
+;; capture, ledger write-back and delivery all verified end to end on live data.
+;;
+;; Uncomment the three lines below to prompt automatically when a sales voucher
+;; is saved. Do it when you can watch the next few bills go through, not in the
+;; middle of a busy counter — this is the one change that can affect saving.
+;;
+;; "Form Accept" is listed FIRST on purpose. That action is what actually commits
+;; the voucher, and handlers run in order — so listing it first means the invoice
+;; is safely in the books before we ask about WhatsApp. Omitting it entirely is
+;; what makes vouchers stop saving, because On : Form Accept replaces the default.
+;;
+[#Form: Sales Color]
+    On : Form Accept : Yes : Form Accept
+    On : Form Accept : Yes : Call : SSWSendInvoice
+;; ===========================================================================
+;;
+;; ENABLED 16-Sep-2026.
+;;
+;; If sales vouchers ever stop saving, this is the first thing to suspect:
+;; comment these three lines out, restart Tally, and billing returns to normal.
+;; The Alt+J button keeps working either way.
+;; ===========================================================================
